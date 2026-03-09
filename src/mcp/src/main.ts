@@ -105,26 +105,36 @@ server.tool(
               // Fetch the first page to get context and initial data
               const firstPageResponse: PageCollection = await request.get();
               const odataContext = firstPageResponse['@odata.context']; // Capture context from first page
-              let allItems: any[] = firstPageResponse.value || []; // Initialize with first page's items
 
-              // Callback function to process subsequent pages
-              const callback = (item: any) => {
-                allItems.push(item);
-                return true; // Return true to continue iteration
-              };
+              // If the response doesn't have a value array, it's not a list endpoint — return as-is
+              if (!Array.isArray(firstPageResponse.value)) {
+                logger.info(`Response for ${path} is not a collection (no value array). Returning single response.`);
+                responseData = firstPageResponse;
+              } else {
+                // IMPORTANT: Use a separate array so the PageIterator callback doesn't
+                // mutate the same array the iterator is reading from (which would cause
+                // an infinite loop and eventual RangeError: Invalid array length).
+                let allItems: any[] = [];
 
-              // Create a PageIterator starting from the first response
-              const pageIterator = new PageIterator(graphClient, firstPageResponse, callback);
+                // Callback function to collect items from all pages
+                const callback = (item: any) => {
+                  allItems.push(item);
+                  return true; // Return true to continue iteration
+                };
 
-              // Iterate over all remaining pages
-              await pageIterator.iterate();
+                // Create a PageIterator starting from the first response
+                const pageIterator = new PageIterator(graphClient!, firstPageResponse, callback);
 
-              // Construct final response with context and combined values under 'value' key
-              responseData = {
-                '@odata.context': odataContext,
-                value: allItems
-              };
-              logger.info(`Finished fetching all Graph pages. Total items: ${allItems.length}`);
+                // Iterate over all pages (including the first)
+                await pageIterator.iterate();
+
+                // Construct final response with context and combined values under 'value' key
+                responseData = {
+                  '@odata.context': odataContext,
+                  value: allItems
+                };
+                logger.info(`Finished fetching all Graph pages. Total items: ${allItems.length}`);
+              }
 
             } else {
               logger.info(`Fetching single page for Graph path: ${path}`);

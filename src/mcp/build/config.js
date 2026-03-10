@@ -30,30 +30,37 @@ export function selectTenant(config, tenantName) {
 }
 export function tenantConfigToAuthConfig(tenant) {
     let mode;
-    switch ((tenant.authMode ?? "").toLowerCase()) {
-        case "client_credentials":
-            mode = AuthMode.ClientCredentials;
-            break;
-        case "certificate":
-            mode = AuthMode.Certificate;
-            break;
-        case "client_provided_token":
-            mode = AuthMode.ClientProvidedToken;
-            break;
-        case "interactive":
-            mode = AuthMode.Interactive;
-            break;
-        default:
-            // Auto-detect based on available fields
-            if (tenant.tenantId && tenant.clientId && tenant.clientSecret) {
+    const rawAuthMode = tenant.authMode;
+    if (rawAuthMode !== undefined && rawAuthMode !== null) {
+        switch (rawAuthMode.toLowerCase()) {
+            case "client_credentials":
                 mode = AuthMode.ClientCredentials;
-            }
-            else if (tenant.tenantId && tenant.clientId && tenant.certificatePath) {
+                break;
+            case "certificate":
                 mode = AuthMode.Certificate;
-            }
-            else {
+                break;
+            case "client_provided_token":
+                mode = AuthMode.ClientProvidedToken;
+                break;
+            case "interactive":
                 mode = AuthMode.Interactive;
-            }
+                break;
+            default:
+                throw new Error(`Invalid authMode '${rawAuthMode}' for tenant '${tenant.name}'. ` +
+                    `Valid values: client_credentials, certificate, client_provided_token, interactive`);
+        }
+    }
+    else {
+        // Auto-detect based on available fields when authMode is not specified
+        if (tenant.tenantId && tenant.clientId && tenant.clientSecret) {
+            mode = AuthMode.ClientCredentials;
+        }
+        else if (tenant.tenantId && tenant.clientId && tenant.certificatePath) {
+            mode = AuthMode.Certificate;
+        }
+        else {
+            mode = AuthMode.Interactive;
+        }
     }
     return {
         mode,

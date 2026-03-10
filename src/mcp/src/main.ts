@@ -187,7 +187,7 @@ async function main() {
     {
       apiType: z.enum(["graph", "azure"]).describe("Type of Microsoft API to query. Options: 'graph' for Microsoft Graph (Entra) or 'azure' for Azure Resource Management."),
       path: z.string().describe("The Azure or Graph API URL path to call (e.g. '/users', '/groups', '/subscriptions')"),
-      method: z.enum(["get", "post", "put", "patch", "delete"]).describe("HTTP method to use. NOTE: POST, PATCH and DELETE require confirm: true to be set explicitly."),
+      method: z.enum(["get", "post", "put", "patch", "delete"]).describe("HTTP method to use. NOTE: POST, PATCH and DELETE require confirm: true. GET and PUT do not require confirmation."),
       apiVersion: z.string().optional().describe("Azure Resource Management API version (required for apiType Azure)"),
       subscriptionId: z.string().optional().describe("Azure Subscription ID (for Azure Resource Management)."),
       queryParams: z.record(z.string()).optional().describe("Query parameters for the request"),
@@ -195,7 +195,7 @@ async function main() {
       graphApiVersion: z.enum(["v1.0", "beta"]).optional().default(defaultGraphApiVersion as "v1.0" | "beta").describe(`Microsoft Graph API version to use (default: ${defaultGraphApiVersion})`),
       fetchAll: z.boolean().optional().default(false).describe("Set to true to automatically fetch all pages for list results (e.g., users, groups). Default is false."),
       consistencyLevel: z.string().optional().describe("Graph API ConsistencyLevel header. ADVISED to be set to 'eventual' for Graph GET requests using advanced query parameters ($filter, $count, $search, $orderby)."),
-      confirm: z.boolean().optional().describe("Required for POST, PATCH and DELETE operations. Set to true only after the user has explicitly confirmed the operation. GET requests do not need this field."),
+      confirm: z.boolean().optional().describe("Required for POST, PATCH and DELETE operations (not needed for GET or PUT). Set to true only after the user has explicitly confirmed the operation."),
     },
     async ({
       apiType,
@@ -229,7 +229,15 @@ async function main() {
       // Confirmation gate for destructive / write operations
       // -----------------------------------------------------------------------
       if (requiresConfirmation(method) && confirm !== true) {
-        const bodyPreview = body ? `\nRequest body:\n${JSON.stringify(body, null, 2)}` : "";
+        const MAX_BODY_PREVIEW = 500;
+        let bodyPreview = "";
+        if (body) {
+          const serialized = JSON.stringify(body, null, 2);
+          const truncated = serialized.length > MAX_BODY_PREVIEW
+            ? serialized.slice(0, MAX_BODY_PREVIEW) + "\n... (truncated)"
+            : serialized;
+          bodyPreview = `\nRequest body:\n${truncated}`;
+        }
         const confirmationMessage =
           `\u26a0\ufe0f  CONFIRMATION REQUIRED\n` +
           `${"=".repeat(60)}\n` +
@@ -614,9 +622,9 @@ async function main() {
 
         logger.info(`Requesting additional Graph permissions: ${scopes.join(', ')}`);
 
-        const currentTenantId = process.env.TENANT_ID || authConfig.tenantId || LokkaDefaultTenantId;
-        const currentClientId = process.env.CLIENT_ID || authConfig.clientId || LokkaClientId;
-        const redirectUri = process.env.REDIRECT_URI || authConfig.redirectUri || LokkaDefaultRedirectUri;
+        const currentTenantId = authConfig.tenantId || LokkaDefaultTenantId;
+        const currentClientId = authConfig.clientId || LokkaClientId;
+        const redirectUri = authConfig.redirectUri || LokkaDefaultRedirectUri;
 
         logger.info(`Using tenant ID: ${currentTenantId}, client ID: ${currentClientId} for interactive authentication`);
 

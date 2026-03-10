@@ -116,6 +116,7 @@ export interface AuthConfig {
   redirectUri?: string;
   certificatePath?: string;
   certificatePassword?: string;
+  tenantName?: string;
 }
 
 export class AuthManager {
@@ -243,6 +244,10 @@ export class AuthManager {
 
   getAuthMode(): AuthMode {
     return this.config.mode;
+  }
+
+  getTenantName(): string | undefined {
+    return this.config.tenantName;
   }
 
   isClientCredentials(): boolean {

@@ -197,6 +197,9 @@ export class AuthManager {
     getAuthMode() {
         return this.config.mode;
     }
+    getTenantName() {
+        return this.config.tenantName;
+    }
     isClientCredentials() {
         return this.config.mode === AuthMode.ClientCredentials;
     }

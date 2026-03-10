@@ -167,7 +167,7 @@ async function main() {
   const serverName = tenantName ? `Lokka-Microsoft [${tenantName}]` : "Lokka-Microsoft";
   const server = new McpServer({
     name: serverName,
-    version: "0.3.0",
+    version: "0.3.1",
   });
 
   // Helper: build the tenant header line for tool responses

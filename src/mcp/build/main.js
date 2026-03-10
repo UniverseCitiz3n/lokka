@@ -16,7 +16,7 @@ let authManager = null;
 let graphClient = null;
 let lokkaAvailableTenants = [];
 // HTTP methods that require explicit user confirmation before execution
-const METHODS_REQUIRING_CONFIRMATION = ["post", "patch", "delete"];
+const METHODS_REQUIRING_CONFIRMATION = ["post", "put", "patch", "delete"];
 function requiresConfirmation(method) {
     return METHODS_REQUIRING_CONFIRMATION.includes(method.toLowerCase());
 }
@@ -157,11 +157,11 @@ async function main() {
     // -------------------------------------------------------------------------
     server.tool("Lokka-Microsoft", `A versatile tool to interact with Microsoft APIs including Microsoft Graph (Entra) and Azure Resource Management. ` +
         `Currently connected to tenant: ${tenantDisplay}. ` +
-        `IMPORTANT: POST, PATCH and DELETE operations require explicit user confirmation (set confirm: true). ` +
+        `IMPORTANT: POST, PUT, PATCH and DELETE operations require explicit user confirmation (set confirm: true). ` +
         `For Graph API GET requests using advanced query parameters ($filter, $count, $search, $orderby), you are ADVISED to set 'consistencyLevel: "eventual"'.`, {
         apiType: z.enum(["graph", "azure"]).describe("Type of Microsoft API to query. Options: 'graph' for Microsoft Graph (Entra) or 'azure' for Azure Resource Management."),
         path: z.string().describe("The Azure or Graph API URL path to call (e.g. '/users', '/groups', '/subscriptions')"),
-        method: z.enum(["get", "post", "put", "patch", "delete"]).describe("HTTP method to use. NOTE: POST, PATCH and DELETE require confirm: true. GET and PUT do not require confirmation."),
+        method: z.enum(["get", "post", "put", "patch", "delete"]).describe("HTTP method to use. NOTE: POST, PUT, PATCH and DELETE require confirm: true. Only GET does not require confirmation."),
         apiVersion: z.string().optional().describe("Azure Resource Management API version (required for apiType Azure)"),
         subscriptionId: z.string().optional().describe("Azure Subscription ID (for Azure Resource Management)."),
         queryParams: z.record(z.string()).optional().describe("Query parameters for the request"),
@@ -169,7 +169,7 @@ async function main() {
         graphApiVersion: z.enum(["v1.0", "beta"]).optional().default(defaultGraphApiVersion).describe(`Microsoft Graph API version to use (default: ${defaultGraphApiVersion})`),
         fetchAll: z.boolean().optional().default(false).describe("Set to true to automatically fetch all pages for list results (e.g., users, groups). Default is false."),
         consistencyLevel: z.string().optional().describe("Graph API ConsistencyLevel header. ADVISED to be set to 'eventual' for Graph GET requests using advanced query parameters ($filter, $count, $search, $orderby)."),
-        confirm: z.boolean().optional().describe("Required for POST, PATCH and DELETE operations (not needed for GET or PUT). Set to true only after the user has explicitly confirmed the operation."),
+        confirm: z.boolean().optional().describe("Required for POST, PUT, PATCH and DELETE operations (not needed for GET). Set to true only after the user has explicitly confirmed the operation."),
     }, async ({ apiType, path, method, apiVersion, subscriptionId, queryParams, body, graphApiVersion, fetchAll, consistencyLevel, confirm, }) => {
         // Override graphApiVersion if USE_GRAPH_BETA is explicitly set to false
         const effectiveGraphApiVersion = !useGraphBeta ? "v1.0" : graphApiVersion;

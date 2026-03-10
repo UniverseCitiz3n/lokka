@@ -1,14 +1,14 @@
 {
-  "name": "lokka-repo-runner",
-  "version": "0.3.0",
-  "private": true,
-  "description": "Root package manifest so npm exec from GitHub can run Lokka from repo root.",
-  "license": "MIT",
-  "type": "module",
-  "bin": {
-    "lokka": "src/mcp/build/main.js"
-  },
-  "scripts": {
-    "start": "node src/mcp/build/main.js"
-  }
+    "name": "lokka-repo-runner",
+    "version": "0.3.0",
+    "private": true,
+    "description": "Root package manifest so npm exec from GitHub can run Lokka from repo root.",
+    "license": "MIT",
+    "type": "module",
+    "bin": {
+        "lokka": "src/mcp/build/main.js"
+    },
+    "scripts": {
+        "start": "node src/mcp/build/main.js"
+    }
 }

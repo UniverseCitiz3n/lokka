@@ -569,18 +569,19 @@ async function main() {
         certificatePassword
     };
     authManager = new AuthManager(authConfig);
-    // Only initialize if we have required config (for client token mode, we can start without a token)
-    if (authMode !== AuthMode.ClientProvidedToken || initialAccessToken) {
-        await authManager.initialize();
-        // Initialize Graph Client
-        const authProvider = authManager.getGraphAuthProvider();
-        graphClient = Client.initWithMiddleware({
-            authProvider: authProvider,
-        });
-        logger.info(`Authentication initialized successfully using ${authMode} mode`);
+    // Always initialize so client-token mode creates its credential even without an initial token.
+    // AuthManager.testCredential already skips validation when no token was provided at startup.
+    await authManager.initialize();
+    // Initialize Graph Client
+    const authProvider = authManager.getGraphAuthProvider();
+    graphClient = Client.initWithMiddleware({
+        authProvider: authProvider,
+    });
+    if (authMode === AuthMode.ClientProvidedToken && !initialAccessToken) {
+        logger.info("Started in client token mode without initial token. Use set-access-token tool to provide authentication token.");
     }
     else {
-        logger.info("Started in client token mode. Use set-access-token tool to provide authentication token.");
+        logger.info(`Authentication initialized successfully using ${authMode} mode`);
     }
     const transport = new StdioServerTransport();
     await server.connect(transport);

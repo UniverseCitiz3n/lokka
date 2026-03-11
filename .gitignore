@@ -137,3 +137,4 @@ dist
 src/.DS_Store
 .DS_Store
 website/static/img/Thumbs.db
+package-lock.json

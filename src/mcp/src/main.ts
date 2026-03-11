@@ -18,12 +18,28 @@ logger.info("Starting Lokka Multi-Microsoft API MCP Server (v0.3.0)");
 let authManager: AuthManager | null = null;
 let graphClient: Client | null = null;
 let lokkaAvailableTenants: Array<{ name: string }> = [];
+let tenantStateQueue: Promise<void> = Promise.resolve();
 
 // HTTP methods that require explicit user confirmation before execution
 const METHODS_REQUIRING_CONFIRMATION = ["post", "put", "patch", "delete"] as const;
 
 function requiresConfirmation(method: string): boolean {
   return (METHODS_REQUIRING_CONFIRMATION as readonly string[]).includes(method.toLowerCase());
+}
+
+async function withTenantStateLock<T>(operation: () => Promise<T>): Promise<T> {
+  const previous = tenantStateQueue;
+  let releaseCurrent!: () => void;
+  tenantStateQueue = new Promise<void>((resolve) => {
+    releaseCurrent = resolve;
+  });
+
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    releaseCurrent();
+  }
 }
 
 // Start the server with stdio transport
@@ -523,37 +539,39 @@ async function main() {
     "Check the current authentication status, active tenant information, and permission scopes of the MCP Server session.",
     {},
     async () => {
-      try {
-        const authMode = authManager?.getAuthMode() || "Not initialized";
-        const isReady = authManager !== null;
-        const tokenStatus = authManager ? await authManager.getTokenStatus() : { isExpired: false };
+      return withTenantStateLock(async () => {
+        try {
+          const authMode = authManager?.getAuthMode() || "Not initialized";
+          const isReady = authManager !== null;
+          const tokenStatus = authManager ? await authManager.getTokenStatus() : { isExpired: false };
 
-        return {
-          content: [{
-            type: "text" as const,
-            text: JSON.stringify({
-              tenant: {
-                name: tenantName || null,
-                tenantId: authConfig.tenantId || null,
-                display: tenantDisplay,
-              },
-              authMode,
-              isReady,
-              supportsTokenUpdates: authMode === AuthMode.ClientProvidedToken,
-              tokenStatus,
-              timestamp: new Date().toISOString()
-            }, null, 2)
-          }],
-        };
-      } catch (error: any) {
-        return {
-          content: [{
-            type: "text" as const,
-            text: `Error checking auth status: ${error.message}`
-          }],
-          isError: true
-        };
-      }
+          return {
+            content: [{
+              type: "text" as const,
+              text: JSON.stringify({
+                tenant: {
+                  name: tenantName || null,
+                  tenantId: authConfig.tenantId || null,
+                  display: tenantDisplay,
+                },
+                authMode,
+                isReady,
+                supportsTokenUpdates: authMode === AuthMode.ClientProvidedToken,
+                tokenStatus,
+                timestamp: new Date().toISOString()
+              }, null, 2)
+            }],
+          };
+        } catch (error: any) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: `Error checking auth status: ${error.message}`
+            }],
+            isError: true
+          };
+        }
+      });
     }
   );
 
@@ -730,74 +748,76 @@ async function main() {
       tenantName: z.string().describe("Name of the tenant to switch to (must match a tenant name in the config file)"),
     },
     async ({ tenantName: requestedTenant }) => {
-      try {
-        if (!lokkaConfig) {
+      return withTenantStateLock(async () => {
+        try {
+          if (!lokkaConfig) {
+            return {
+              content: [{
+                type: "text" as const,
+                text: "Error: switch-tenant is only available when a multi-tenant config file is loaded. Set LOKKA_CONFIG to a JSON config file path and restart the server.",
+              }],
+              isError: true,
+            };
+          }
+
+          const selectedTenant = selectTenant(lokkaConfig, requestedTenant);
+
+          if (selectedTenant.name === tenantName) {
+            return {
+              content: [{
+                type: "text" as const,
+                text: `Already connected to tenant '${tenantName}'. No switch needed.`,
+              }],
+            };
+          }
+
+          logger.info(`Switching tenant from '${tenantName}' to '${selectedTenant.name}'`);
+
+          const newAuthConfig = tenantConfigToAuthConfig(selectedTenant);
+          const newAuthManager = new AuthManager(newAuthConfig);
+          await newAuthManager.initialize();
+
+          const newAuthProvider = newAuthManager.getGraphAuthProvider();
+          const newGraphClient = Client.initWithMiddleware({ authProvider: newAuthProvider });
+
+          // Update module-level and closure-captured variables atomically while lock is held.
+          authManager = newAuthManager;
+          graphClient = newGraphClient;
+          authConfig = newAuthConfig;
+          tenantName = newAuthManager.getTenantName();
+          tenantId = newAuthConfig.tenantId;
+          tenantDisplay = tenantName
+            ? `${tenantName}${tenantId ? ` (${tenantId})` : ''}`
+            : tenantId || "unknown";
+
+          logger.info(`Successfully switched to tenant: ${tenantDisplay}`);
+
           return {
             content: [{
               type: "text" as const,
-              text: "Error: switch-tenant is only available when a multi-tenant config file is loaded. Set LOKKA_CONFIG to a JSON config file path and restart the server.",
+              text: JSON.stringify({
+                message: `Successfully switched to tenant '${selectedTenant.name}'`,
+                activeTenant: {
+                  name: tenantName,
+                  tenantId: tenantId || null,
+                  display: tenantDisplay,
+                  authMode: newAuthConfig.mode,
+                },
+                timestamp: new Date().toISOString(),
+              }, null, 2),
+            }],
+          };
+        } catch (error: any) {
+          logger.error("Error switching tenant:", error);
+          return {
+            content: [{
+              type: "text" as const,
+              text: `Error switching tenant: ${error.message}`,
             }],
             isError: true,
           };
         }
-
-        const selectedTenant = selectTenant(lokkaConfig, requestedTenant);
-
-        if (selectedTenant.name === tenantName) {
-          return {
-            content: [{
-              type: "text" as const,
-              text: `Already connected to tenant '${tenantName}'. No switch needed.`,
-            }],
-          };
-        }
-
-        logger.info(`Switching tenant from '${tenantName}' to '${selectedTenant.name}'`);
-
-        const newAuthConfig = tenantConfigToAuthConfig(selectedTenant);
-        const newAuthManager = new AuthManager(newAuthConfig);
-        await newAuthManager.initialize();
-
-        const newAuthProvider = newAuthManager.getGraphAuthProvider();
-        const newGraphClient = Client.initWithMiddleware({ authProvider: newAuthProvider });
-
-        // Update module-level and closure-captured variables
-        authManager = newAuthManager;
-        graphClient = newGraphClient;
-        authConfig = newAuthConfig;
-        tenantName = newAuthManager.getTenantName();
-        tenantId = newAuthConfig.tenantId;
-        tenantDisplay = tenantName
-          ? `${tenantName}${tenantId ? ` (${tenantId})` : ''}`
-          : tenantId || "unknown";
-
-        logger.info(`Successfully switched to tenant: ${tenantDisplay}`);
-
-        return {
-          content: [{
-            type: "text" as const,
-            text: JSON.stringify({
-              message: `Successfully switched to tenant '${selectedTenant.name}'`,
-              activeTenant: {
-                name: tenantName,
-                tenantId: tenantId || null,
-                display: tenantDisplay,
-                authMode: newAuthConfig.mode,
-              },
-              timestamp: new Date().toISOString(),
-            }, null, 2),
-          }],
-        };
-      } catch (error: any) {
-        logger.error("Error switching tenant:", error);
-        return {
-          content: [{
-            type: "text" as const,
-            text: `Error switching tenant: ${error.message}`,
-          }],
-          isError: true,
-        };
-      }
+      });
     }
   );
 
@@ -806,29 +826,33 @@ async function main() {
   // -------------------------------------------------------------------------
   server.tool(
     "list-tenants",
-    "List all configured tenants and show which one is currently active. To switch tenants, set the LOKKA_TENANT environment variable to a tenant name and restart the server.",
+    "List all configured tenants and show which one is currently active. Use switch-tenant to change tenants for the current MCP session.",
     {},
     async () => {
-      const activeName = tenantName || tenantId || "unknown";
-      const tenantList = lokkaAvailableTenants.length > 0
-        ? lokkaAvailableTenants
-        : [{ name: activeName }];
+      return withTenantStateLock(async () => {
+        const activeName = tenantName || tenantId || "unknown";
+        const tenantList = lokkaAvailableTenants.length > 0
+          ? lokkaAvailableTenants
+          : [{ name: activeName }];
 
-      const lines = tenantList.map((t) => {
-        const isActive = t.name === activeName || (!tenantName && !tenantId);
-        return `${isActive ? "\u25b6 " : "  "}${t.name}${isActive ? "  \u2190 ACTIVE" : ""}`;
+        const lines = tenantList.map((t) => {
+          const isActive = t.name === activeName || (!tenantName && !tenantId);
+          return `${isActive ? "\u25b6 " : "  "}${t.name}${isActive ? "  \u2190 ACTIVE" : ""}`;
+        });
+
+        return {
+          content: [{
+            type: "text" as const,
+            text:
+              `Configured tenants:\n\n${lines.join("\n")}\n\n` +
+              `Active tenant: ${tenantDisplay}\n\n` +
+              `Use switch-tenant with the target name to change the active tenant for this running MCP session.\n` +
+              (configPath
+                ? `Config file: ${configPath}\nStartup default tenant is selected from LOKKA_TENANT when the server starts.`
+                : "Using single-tenant environment variable configuration.\nTo use multiple tenants, create a JSON config file and set LOKKA_CONFIG=<path>."),
+          }],
+        };
       });
-
-      return {
-        content: [{
-          type: "text" as const,
-          text:
-            `Configured tenants:\n\n${lines.join("\n")}\n\n` +
-            `Active tenant: ${tenantDisplay}\n\n` +
-            `To switch tenant, set LOKKA_TENANT=<name> and restart the MCP server.\n` +
-            (configPath ? `Config file: ${configPath}` : "Using single-tenant environment variable configuration.\nTo use multiple tenants, create a JSON config file and set LOKKA_CONFIG=<path>."),
-        }],
-      };
     }
   );
 

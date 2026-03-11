@@ -137,8 +137,8 @@ async function main() {
   const authProvider = authManager.getGraphAuthProvider();
   graphClient = Client.initWithMiddleware({ authProvider });
 
-  const tenantName = authManager.getTenantName();
-  const tenantId = authConfig.tenantId;
+  let tenantName = authManager.getTenantName();
+  let tenantId = authConfig.tenantId;
 
   if (authConfig.mode === AuthMode.ClientProvidedToken && !authConfig.accessToken) {
     logger.info("Started in client token mode without initial token. Use set-access-token tool to provide authentication token.");
@@ -149,7 +149,7 @@ async function main() {
   // -------------------------------------------------------------------------
   // Step 3: Log a prominent banner about which tenant is active
   // -------------------------------------------------------------------------
-  const tenantDisplay = tenantName
+  let tenantDisplay = tenantName
     ? `${tenantName}${tenantId ? ` (${tenantId})` : ''}`
     : tenantId || "unknown";
 
@@ -715,6 +715,87 @@ async function main() {
             text: `Error requesting additional permissions: ${error.message}`
           }],
           isError: true
+        };
+      }
+    }
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: switch-tenant
+  // -------------------------------------------------------------------------
+  server.tool(
+    "switch-tenant",
+    "Switch the active Microsoft tenant at runtime. Only available when a multi-tenant config file is loaded (LOKKA_CONFIG). Use list-tenants to see available tenants.",
+    {
+      tenantName: z.string().describe("Name of the tenant to switch to (must match a tenant name in the config file)"),
+    },
+    async ({ tenantName: requestedTenant }) => {
+      try {
+        if (!lokkaConfig) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: "Error: switch-tenant is only available when a multi-tenant config file is loaded. Set LOKKA_CONFIG to a JSON config file path and restart the server.",
+            }],
+            isError: true,
+          };
+        }
+
+        const selectedTenant = selectTenant(lokkaConfig, requestedTenant);
+
+        if (selectedTenant.name === tenantName) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: `Already connected to tenant '${tenantName}'. No switch needed.`,
+            }],
+          };
+        }
+
+        logger.info(`Switching tenant from '${tenantName}' to '${selectedTenant.name}'`);
+
+        const newAuthConfig = tenantConfigToAuthConfig(selectedTenant);
+        const newAuthManager = new AuthManager(newAuthConfig);
+        await newAuthManager.initialize();
+
+        const newAuthProvider = newAuthManager.getGraphAuthProvider();
+        const newGraphClient = Client.initWithMiddleware({ authProvider: newAuthProvider });
+
+        // Update module-level and closure-captured variables
+        authManager = newAuthManager;
+        graphClient = newGraphClient;
+        authConfig = newAuthConfig;
+        tenantName = newAuthManager.getTenantName();
+        tenantId = newAuthConfig.tenantId;
+        tenantDisplay = tenantName
+          ? `${tenantName}${tenantId ? ` (${tenantId})` : ''}`
+          : tenantId || "unknown";
+
+        logger.info(`Successfully switched to tenant: ${tenantDisplay}`);
+
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              message: `Successfully switched to tenant '${selectedTenant.name}'`,
+              activeTenant: {
+                name: tenantName,
+                tenantId: tenantId || null,
+                display: tenantDisplay,
+                authMode: newAuthConfig.mode,
+              },
+              timestamp: new Date().toISOString(),
+            }, null, 2),
+          }],
+        };
+      } catch (error: any) {
+        logger.error("Error switching tenant:", error);
+        return {
+          content: [{
+            type: "text" as const,
+            text: `Error switching tenant: ${error.message}`,
+          }],
+          isError: true,
         };
       }
     }

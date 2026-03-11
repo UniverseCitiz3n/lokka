@@ -192,7 +192,7 @@ async function main() {
       lines.push(`Available tenants: ${lokkaAvailableTenants.map((t) => t.name).join(", ")}`);
     }
     lines.push(
-      `Always mention the active tenant name when responding to user queries so the user knows which tenant context is being used.`
+      `Include the active tenant name in responses when relevant to provide context about which tenant is being used.`
     );
     return lines.join("\n");
   }

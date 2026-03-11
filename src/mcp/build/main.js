@@ -159,14 +159,53 @@ async function main() {
     // Step 4: Create server with tenant name embedded in the server name
     // -------------------------------------------------------------------------
     const serverName = tenantName ? `Lokka-Microsoft [${tenantName}]` : "Lokka-Microsoft";
+    function buildInstructions() {
+        const lines = [
+            `You are connected to Lokka MCP Server.`,
+            `Active tenant: ${tenantDisplay}`,
+            `Authentication mode: ${authConfig.mode}`,
+        ];
+        if (lokkaAvailableTenants.length > 1) {
+            lines.push(`Available tenants: ${lokkaAvailableTenants.map((t) => t.name).join(", ")}`);
+        }
+        lines.push(`Always mention the active tenant name when responding to user queries so the user knows which tenant context is being used.`);
+        return lines.join("\n");
+    }
     const server = new McpServer({
         name: serverName,
         version: "0.3.1",
+    }, {
+        instructions: buildInstructions(),
     });
     // Helper: build the tenant header line for tool responses
     function tenantHeader() {
         return `\u26a1 Tenant: ${tenantDisplay} | Auth: ${authConfig.mode}\n${"\u2500".repeat(60)}\n`;
     }
+    // -------------------------------------------------------------------------
+    // Resource: lokka://tenant/current – persistent tenant connection info
+    // -------------------------------------------------------------------------
+    server.resource("current-tenant", "lokka://tenant/current", {
+        description: "Current tenant connection details for the active Lokka MCP session",
+        mimeType: "application/json",
+    }, async () => {
+        const status = {
+            tenant: {
+                name: tenantName || null,
+                tenantId: tenantId || null,
+                display: tenantDisplay,
+            },
+            authMode: authConfig.mode,
+            availableTenants: lokkaAvailableTenants.map((t) => t.name),
+            timestamp: new Date().toISOString(),
+        };
+        return {
+            contents: [{
+                    uri: "lokka://tenant/current",
+                    mimeType: "application/json",
+                    text: JSON.stringify(status, null, 2),
+                }],
+        };
+    });
     // -------------------------------------------------------------------------
     // Tool: Lokka-Microsoft  (main API tool)
     // -------------------------------------------------------------------------

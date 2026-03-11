@@ -119,8 +119,8 @@ async function main() {
     await authManager.initialize();
     const authProvider = authManager.getGraphAuthProvider();
     graphClient = Client.initWithMiddleware({ authProvider });
-    const tenantName = authManager.getTenantName();
-    const tenantId = authConfig.tenantId;
+    let tenantName = authManager.getTenantName();
+    let tenantId = authConfig.tenantId;
     if (authConfig.mode === AuthMode.ClientProvidedToken && !authConfig.accessToken) {
         logger.info("Started in client token mode without initial token. Use set-access-token tool to provide authentication token.");
     }
@@ -130,7 +130,7 @@ async function main() {
     // -------------------------------------------------------------------------
     // Step 3: Log a prominent banner about which tenant is active
     // -------------------------------------------------------------------------
-    const tenantDisplay = tenantName
+    let tenantDisplay = tenantName
         ? `${tenantName}${tenantId ? ` (${tenantId})` : ''}`
         : tenantId || "unknown";
     logger.info("=".repeat(60));
@@ -616,6 +616,74 @@ async function main() {
         }
     });
     // -------------------------------------------------------------------------
+    // Tool: switch-tenant
+    // -------------------------------------------------------------------------
+    server.tool("switch-tenant", "Switch the active Microsoft tenant at runtime. Only available when a multi-tenant config file is loaded (LOKKA_CONFIG). Use list-tenants to see available tenants.", {
+        tenantName: z.string().describe("Name of the tenant to switch to (must match a tenant name in the config file)"),
+    }, async ({ tenantName: requestedTenant }) => {
+        try {
+            if (!lokkaConfig) {
+                return {
+                    content: [{
+                            type: "text",
+                            text: "Error: switch-tenant is only available when a multi-tenant config file is loaded. Set LOKKA_CONFIG to a JSON config file path and restart the server.",
+                        }],
+                    isError: true,
+                };
+            }
+            const selectedTenant = selectTenant(lokkaConfig, requestedTenant);
+            if (selectedTenant.name === tenantName) {
+                return {
+                    content: [{
+                            type: "text",
+                            text: `Already connected to tenant '${tenantName}'. No switch needed.`,
+                        }],
+                };
+            }
+            logger.info(`Switching tenant from '${tenantName}' to '${selectedTenant.name}'`);
+            const newAuthConfig = tenantConfigToAuthConfig(selectedTenant);
+            const newAuthManager = new AuthManager(newAuthConfig);
+            await newAuthManager.initialize();
+            const newAuthProvider = newAuthManager.getGraphAuthProvider();
+            const newGraphClient = Client.initWithMiddleware({ authProvider: newAuthProvider });
+            // Update module-level and closure-captured variables
+            authManager = newAuthManager;
+            graphClient = newGraphClient;
+            authConfig = newAuthConfig;
+            tenantName = newAuthManager.getTenantName();
+            tenantId = newAuthConfig.tenantId;
+            tenantDisplay = tenantName
+                ? `${tenantName}${tenantId ? ` (${tenantId})` : ''}`
+                : tenantId || "unknown";
+            logger.info(`Successfully switched to tenant: ${tenantDisplay}`);
+            return {
+                content: [{
+                        type: "text",
+                        text: JSON.stringify({
+                            message: `Successfully switched to tenant '${selectedTenant.name}'`,
+                            activeTenant: {
+                                name: tenantName,
+                                tenantId: tenantId || null,
+                                display: tenantDisplay,
+                                authMode: newAuthConfig.mode,
+                            },
+                            timestamp: new Date().toISOString(),
+                        }, null, 2),
+                    }],
+            };
+        }
+        catch (error) {
+            logger.error("Error switching tenant:", error);
+            return {
+                content: [{
+                        type: "text",
+                        text: `Error switching tenant: ${error.message}`,
+                    }],
+                isError: true,
+            };
+        }
+    });
+    // -------------------------------------------------------------------------
     // Tool: list-tenants
     // -------------------------------------------------------------------------
     server.tool("list-tenants", "List all configured tenants and show which one is currently active. To switch tenants, set the LOKKA_TENANT environment variable to a tenant name and restart the server.", {}, async () => {
@@ -634,6 +702,20 @@ async function main() {
                         `Active tenant: ${tenantDisplay}\n\n` +
                         `To switch tenant, set LOKKA_TENANT=<name> and restart the MCP server.\n` +
                         (configPath ? `Config file: ${configPath}` : "Using single-tenant environment variable configuration.\nTo use multiple tenants, create a JSON config file and set LOKKA_CONFIG=<path>."),
+                }],
+        };
+    });
+    // -------------------------------------------------------------------------
+    // Tool: restart
+    // -------------------------------------------------------------------------
+    server.tool("restart", "Restart the Lokka MCP server process. The MCP client will automatically relaunch the server with the same configuration. Use this after changing environment variables or configuration files.", {}, async () => {
+        logger.info("Restart requested via restart tool. Exiting process for client-initiated relaunch.");
+        // Send the response before exiting so the client receives the message
+        setImmediate(() => process.exit(0));
+        return {
+            content: [{
+                    type: "text",
+                    text: "Lokka MCP server is restarting. The MCP client will relaunch the server automatically.",
                 }],
         };
     });

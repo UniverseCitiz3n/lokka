@@ -33,8 +33,13 @@ This is the simplest config and uses the default Lokka app.
 {
   "mcpServers": {
     "Lokka-Microsoft": {
-      "command": "npx",
-      "args": ["-y", "@merill/lokka"]
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "github:UniverseCitiz3n/lokka"
+      ]
     }
   }
 }
@@ -48,8 +53,13 @@ If you wish to use a custom Microsoft Entra app, you can create a new app regist
 {
   "mcpServers": {
     "Lokka-Microsoft": {
-      "command": "npx",
-      "args": ["-y", "@merill/lokka"],
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "github:UniverseCitiz3n/lokka"
+      ],
       "env": {
         "TENANT_ID": "<tenant-id>",
         "CLIENT_ID": "<client-id>",
@@ -74,8 +84,13 @@ App only authentication using a PEM-encoded client certificate:
 {
   "mcpServers": {
     "Lokka-Microsoft": {
-      "command": "npx",
-      "args": ["-y", "@merill/lokka"],
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "github:UniverseCitiz3n/lokka"
+      ],
       "env": {
         "TENANT_ID": "<tenant-id>",
         "CLIENT_ID": "<client-id>",
@@ -100,8 +115,13 @@ openssl pkcs12 -in /path/to/cert.pfx -out /path/to/cert.pem -nodes -clcerts
 {
   "mcpServers": {
     "Lokka-Microsoft": {
-      "command": "npx",
-      "args": ["-y", "@merill/lokka"],
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "github:UniverseCitiz3n/lokka"
+      ],
       "env": {
         "TENANT_ID": "<tenant-id>",
         "CLIENT_ID": "<client-id>",
@@ -120,8 +140,13 @@ Token-based authentication where the MCP Client provides access tokens:
 {
   "mcpServers": {
     "Lokka-Microsoft": {
-      "command": "npx",
-      "args": ["-y", "@merill/lokka"],
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "github:UniverseCitiz3n/lokka"
+      ],
       "env": {
         "USE_CLIENT_TOKEN": "true"
       }
@@ -224,8 +249,13 @@ To use this server with the Claude Desktop app, add the following configuration 
 {
   "mcpServers": {
     "Lokka-Microsoft": {
-      "command": "npx",
-      "args": ["-y", "@merill/lokka"]
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "github:UniverseCitiz3n/lokka"
+      ]
     }
   }
 }
@@ -237,8 +267,13 @@ To use this server with the Claude Desktop app, add the following configuration 
 {
   "mcpServers": {
     "Lokka-Microsoft": {
-      "command": "npx",
-      "args": ["-y", "@merill/lokka"],
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "github:UniverseCitiz3n/lokka"
+      ],
       "env": {
         "TENANT_ID": "<tenant-id>",
         "CLIENT_ID": "<client-id>",

@@ -33,8 +33,13 @@ This is the simplest config and uses the default Lokka app.
 {
   "mcpServers": {
     "Lokka-Microsoft": {
-      "command": "npx",
-      "args": ["-y", "@merill/lokka"]
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "github:UniverseCitiz3n/lokka"
+      ]
     }
   }
 }
@@ -48,8 +53,13 @@ If you wish to use a custom Microsoft Entra app, you can create a new app regist
 {
   "mcpServers": {
     "Lokka-Microsoft": {
-      "command": "npx",
-      "args": ["-y", "@merill/lokka"],
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "github:UniverseCitiz3n/lokka"
+      ],
       "env": {
         "TENANT_ID": "<tenant-id>",
         "CLIENT_ID": "<client-id>",
@@ -57,6 +67,75 @@ If you wish to use a custom Microsoft Entra app, you can create a new app regist
       }
     }
   }
+}
+```
+
+### Multi-Tenant Config File
+
+To manage multiple tenants from one installation, create a tenant config JSON file and point Lokka to it with `LOKKA_CONFIG`.
+
+#### VS Code `mcp.json` (Windows)
+
+```jsonc
+{
+  "servers": {
+    "Lokka-Microsoft": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "github:UniverseCitiz3n/lokka"
+      ]
+    }
+  }
+}
+```
+
+#### MCP client configuration
+
+```json
+{
+  "mcpServers": {
+    "Lokka-Microsoft": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "github:UniverseCitiz3n/lokka"
+      ],
+      "env": {
+        "LOKKA_CONFIG": "/path/to/lokka-tenants.json",
+        "LOKKA_TENANT": "Prod"
+      }
+    }
+  }
+}
+```
+
+`LOKKA_TENANT` is optional. If not set, Lokka uses the first tenant in the `tenants` array.
+
+#### Example `lokka-tenants.json`
+
+```json
+{
+  "tenants": [
+    {
+      "name": "Prod",
+      "tenantId": "<tenant-id-prod>",
+      "clientId": "<client-id-prod>",
+      "clientSecret": "<client-secret-prod>",
+      "authMode": "client_credentials"
+    },
+    {
+      "name": "Dev",
+      "tenantId": "<tenant-id-dev>",
+      "clientId": "<client-id-dev>",
+      "authMode": "interactive"
+    }
+  ]
 }
 ```
 
@@ -74,8 +153,13 @@ App only authentication using a PEM-encoded client certificate:
 {
   "mcpServers": {
     "Lokka-Microsoft": {
-      "command": "npx",
-      "args": ["-y", "@merill/lokka"],
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "github:UniverseCitiz3n/lokka"
+      ],
       "env": {
         "TENANT_ID": "<tenant-id>",
         "CLIENT_ID": "<client-id>",
@@ -100,8 +184,13 @@ openssl pkcs12 -in /path/to/cert.pfx -out /path/to/cert.pem -nodes -clcerts
 {
   "mcpServers": {
     "Lokka-Microsoft": {
-      "command": "npx",
-      "args": ["-y", "@merill/lokka"],
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "github:UniverseCitiz3n/lokka"
+      ],
       "env": {
         "TENANT_ID": "<tenant-id>",
         "CLIENT_ID": "<client-id>",
@@ -120,8 +209,13 @@ Token-based authentication where the MCP Client provides access tokens:
 {
   "mcpServers": {
     "Lokka-Microsoft": {
-      "command": "npx",
-      "args": ["-y", "@merill/lokka"],
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "github:UniverseCitiz3n/lokka"
+      ],
       "env": {
         "USE_CLIENT_TOKEN": "true"
       }
@@ -214,6 +308,8 @@ The configuration of the server is done using environment variables. The followi
 | `CERTIFICATE_PASSWORD` | Password for the certificate file (if encrypted). | No |
 | `REDIRECT_URI` | Redirect URI for interactive authentication (default: `http://localhost:3000`). | No |
 | `ACCESS_TOKEN` | Initial access token for client-provided token mode. | No |
+| `LOKKA_CONFIG` | Path to a JSON file containing a `tenants` array for multi-tenant configuration. | No |
+| `LOKKA_TENANT` | Tenant name to select from `LOKKA_CONFIG`. Defaults to the first tenant in the array. | No |
 | `USE_GRAPH_BETA` | Set to "false" to force all Graph API calls to use v1.0 instead of beta (default: true, allows beta). | No |
 
 ## Contributors
@@ -232,8 +328,13 @@ To use this server with the Claude Desktop app, add the following configuration 
 {
   "mcpServers": {
     "Lokka-Microsoft": {
-      "command": "npx",
-      "args": ["-y", "@merill/lokka"]
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "github:UniverseCitiz3n/lokka"
+      ]
     }
   }
 }
@@ -245,8 +346,13 @@ To use this server with the Claude Desktop app, add the following configuration 
 {
   "mcpServers": {
     "Lokka-Microsoft": {
-      "command": "npx",
-      "args": ["-y", "@merill/lokka"],
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "github:UniverseCitiz3n/lokka"
+      ],
       "env": {
         "TENANT_ID": "<tenant-id>",
         "CLIENT_ID": "<client-id>",
@@ -258,3 +364,6 @@ To use this server with the Claude Desktop app, add the following configuration 
 ```
 
 Make sure to replace `<tenant-id>`, `<client-id>`, and `<client-secret>` with the actual values from your Microsoft Entra application. (See [Install Guide](https://lokka.dev/docs/install) for more details on how to create an Entra app and configure the agent.)
+
+
+

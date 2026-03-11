@@ -833,6 +833,26 @@ async function main() {
   );
 
   // -------------------------------------------------------------------------
+  // Tool: restart
+  // -------------------------------------------------------------------------
+  server.tool(
+    "restart",
+    "Restart the Lokka MCP server process. The MCP client will automatically relaunch the server with the same configuration. Use this after changing environment variables or configuration files.",
+    {},
+    async () => {
+      logger.info("Restart requested via restart tool. Exiting process for client-initiated relaunch.");
+      // Send the response before exiting so the client receives the message
+      setImmediate(() => process.exit(0));
+      return {
+        content: [{
+          type: "text" as const,
+          text: "Lokka MCP server is restarting. The MCP client will relaunch the server automatically.",
+        }],
+      };
+    }
+  );
+
+  // -------------------------------------------------------------------------
   // Step 5: Connect transport
   // -------------------------------------------------------------------------
   const transport = new StdioServerTransport();

@@ -7,7 +7,7 @@ import fetch from 'isomorphic-fetch'; // Required polyfill for Graph client
 import { logger } from "./logger.js";
 import { AuthManager, AuthMode } from "./auth.js";
 import { LokkaClientId, LokkaDefaultTenantId, LokkaDefaultRedirectUri, getDefaultGraphApiVersion } from "./constants.js";
-import { loadConfig, selectTenant, tenantConfigToAuthConfig } from "./config.js";
+import { loadConfig, saveConfig, selectTenant, tenantConfigToAuthConfig } from "./config.js";
 // Set up global fetch for the Microsoft Graph client
 global.fetch = fetch;
 logger.info("Starting Lokka Multi-Microsoft API MCP Server (v0.3.0)");
@@ -460,39 +460,72 @@ async function main() {
         accessToken: z.string().describe("The access token obtained from Microsoft Graph authentication"),
         expiresOn: z.string().optional().describe("Token expiration time in ISO format (optional, defaults to 1 hour from now)")
     }, async ({ accessToken, expiresOn }) => {
-        try {
-            const expirationDate = expiresOn ? new Date(expiresOn) : undefined;
-            if (authManager?.getAuthMode() === AuthMode.ClientProvidedToken) {
+        return withTenantStateLock(async () => {
+            try {
+                const expirationDate = expiresOn ? new Date(expiresOn) : undefined;
+                if (expirationDate && isNaN(expirationDate.getTime())) {
+                    return {
+                        content: [{
+                                type: "text",
+                                text: "Error setting access token: expiresOn must be a valid ISO datetime string."
+                            }],
+                        isError: true
+                    };
+                }
+                const currentMode = authManager?.getAuthMode();
+                let switchedToClientTokenMode = false;
+                // If the server is not currently in client-provided token mode,
+                // switch runtime auth configuration first, then apply the token.
+                if (currentMode !== AuthMode.ClientProvidedToken) {
+                    logger.info(`set-access-token requested while auth mode is '${currentMode}'. Switching to '${AuthMode.ClientProvidedToken}'.`);
+                    authConfig = {
+                        ...authConfig,
+                        mode: AuthMode.ClientProvidedToken,
+                        accessToken: undefined,
+                        expiresOn: undefined,
+                    };
+                    // Keep in-memory multi-tenant config aligned with the active runtime mode.
+                    if (lokkaConfig && tenantName) {
+                        const activeTenant = lokkaConfig.tenants.find((t) => t.name === tenantName);
+                        if (activeTenant) {
+                            activeTenant.authMode = AuthMode.ClientProvidedToken;
+                            if (configPath) {
+                                saveConfig(configPath, lokkaConfig);
+                            }
+                        }
+                    }
+                    authManager = new AuthManager(authConfig);
+                    await authManager.initialize();
+                    switchedToClientTokenMode = true;
+                }
+                if (!authManager) {
+                    throw new Error("Authentication manager is not initialized");
+                }
                 authManager.updateAccessToken(accessToken, expirationDate);
+                authConfig.accessToken = accessToken;
+                authConfig.expiresOn = expirationDate;
                 const authProvider = authManager.getGraphAuthProvider();
                 graphClient = Client.initWithMiddleware({ authProvider });
                 return {
                     content: [{
                             type: "text",
-                            text: "Access token updated successfully. You can now make Microsoft Graph requests on behalf of the authenticated user."
+                            text: switchedToClientTokenMode
+                                ? "Authentication mode was updated to client_provided_token and access token was set successfully."
+                                : "Access token updated successfully. You can now make Microsoft Graph requests on behalf of the authenticated user."
                         }],
                 };
             }
-            else {
+            catch (error) {
+                logger.error("Error setting access token:", error);
                 return {
                     content: [{
                             type: "text",
-                            text: "Error: MCP Server is not configured for client-provided token authentication. Set USE_CLIENT_TOKEN=true in environment variables."
+                            text: `Error setting access token: ${error.message}`
                         }],
                     isError: true
                 };
             }
-        }
-        catch (error) {
-            logger.error("Error setting access token:", error);
-            return {
-                content: [{
-                        type: "text",
-                        text: `Error setting access token: ${error.message}`
-                    }],
-                isError: true
-            };
-        }
+        });
     });
     // -------------------------------------------------------------------------
     // Tool: get-auth-status

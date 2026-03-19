@@ -1,6 +1,6 @@
 // Multi-tenant configuration support for Lokka MCP Server
 
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import { AuthMode, AuthConfig } from "./auth.js";
 
 export interface TenantConfig {
@@ -33,6 +33,10 @@ export function loadConfig(configPath: string): LokkaConfig {
     }
   }
   return config;
+}
+
+export function saveConfig(configPath: string, config: LokkaConfig): void {
+  writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
 }
 
 export function selectTenant(config: LokkaConfig, tenantName?: string): TenantConfig {

@@ -194,6 +194,9 @@ async function main() {
     lines.push(
       `Include the active tenant name in responses when relevant to provide context about which tenant is being used.`
     );
+    lines.push(
+      `After calling get-auth-status, ALWAYS output the full tenant and connection details (tenant name, tenant ID, auth mode, token status) to the user.`
+    );
     return lines.join("\n");
   }
 

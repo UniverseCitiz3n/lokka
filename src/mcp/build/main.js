@@ -182,6 +182,12 @@ async function main() {
     function tenantHeader() {
         return `\u26a1 Tenant: ${tenantDisplay} | Auth: ${authConfig.mode}\n${"\u2500".repeat(60)}\n`;
     }
+    function wrapResponse(text, isError = false) {
+        return {
+            content: [{ type: "text", text: tenantHeader() + text }],
+            ...(isError ? { isError: true } : {})
+        };
+    }
     // -------------------------------------------------------------------------
     // Resource: lokka://tenant/current – persistent tenant connection info
     // -------------------------------------------------------------------------
@@ -251,9 +257,7 @@ async function main() {
                 `This operation will MODIFY or DELETE data in the tenant above.\n` +
                 `Please ask the user to explicitly confirm before proceeding.\n` +
                 `Once confirmed, call this tool again with the same parameters and add: confirm: true`;
-            return {
-                content: [{ type: "text", text: confirmationMessage }],
-            };
+            return wrapResponse(confirmationMessage);
         }
         logger.info(`Executing Lokka-Microsoft tool: apiType=${apiType}, path=${path}, method=${method}, graphApiVersion=${effectiveGraphApiVersion}, fetchAll=${fetchAll}, confirm=${confirm}`);
         let determinedUrl;
@@ -418,8 +422,7 @@ async function main() {
                 }
             }
             // --- Format and Return Result ---
-            let resultText = tenantHeader();
-            resultText += `Result for ${apiType} API (${apiType === 'graph' ? effectiveGraphApiVersion : apiVersion}) - ${method.toUpperCase()} ${path}:\n\n`;
+            let resultText = `Result for ${apiType} API (${apiType === 'graph' ? effectiveGraphApiVersion : apiVersion}) - ${method.toUpperCase()} ${path}:\n\n`;
             resultText += JSON.stringify(responseData, null, 2);
             if (!fetchAll && method === 'get') {
                 const nextLinkKey = apiType === 'graph' ? '@odata.nextLink' : 'nextLink';
@@ -427,9 +430,7 @@ async function main() {
                     resultText += `\n\nNote: More results are available. To retrieve all pages, add the parameter 'fetchAll: true' to your request.`;
                 }
             }
-            return {
-                content: [{ type: "text", text: resultText }],
-            };
+            return wrapResponse(resultText);
         }
         catch (error) {
             logger.error(`Error in Lokka-Microsoft tool (apiType: ${apiType}, path: ${path}, method: ${method}):`, error);
@@ -439,19 +440,13 @@ async function main() {
                     : "https://management.azure.com";
             }
             const errorBody = error.body ? (typeof error.body === 'string' ? error.body : JSON.stringify(error.body)) : 'N/A';
-            return {
-                content: [{
-                        type: "text",
-                        text: JSON.stringify({
-                            tenant: tenantDisplay,
-                            error: error instanceof Error ? error.message : String(error),
-                            statusCode: error.statusCode || 'N/A',
-                            errorBody: errorBody,
-                            attemptedBaseUrl: determinedUrl
-                        }),
-                    }],
-                isError: true
-            };
+            return wrapResponse(JSON.stringify({
+                tenant: tenantDisplay,
+                error: error instanceof Error ? error.message : String(error),
+                statusCode: error.statusCode || 'N/A',
+                errorBody: errorBody,
+                attemptedBaseUrl: determinedUrl
+            }, null, 2), true);
         }
     });
     // -------------------------------------------------------------------------
@@ -465,13 +460,7 @@ async function main() {
             try {
                 const expirationDate = expiresOn ? new Date(expiresOn) : undefined;
                 if (expirationDate && isNaN(expirationDate.getTime())) {
-                    return {
-                        content: [{
-                                type: "text",
-                                text: "Error setting access token: expiresOn must be a valid ISO datetime string."
-                            }],
-                        isError: true
-                    };
+                    return wrapResponse("Error setting access token: expiresOn must be a valid ISO datetime string.", true);
                 }
                 const currentMode = authManager?.getAuthMode();
                 let switchedToClientTokenMode = false;
@@ -507,24 +496,13 @@ async function main() {
                 authConfig.expiresOn = expirationDate;
                 const authProvider = authManager.getGraphAuthProvider();
                 graphClient = Client.initWithMiddleware({ authProvider });
-                return {
-                    content: [{
-                            type: "text",
-                            text: switchedToClientTokenMode
-                                ? "Authentication mode was updated to client_provided_token and access token was set successfully."
-                                : "Access token updated successfully. You can now make Microsoft Graph requests on behalf of the authenticated user."
-                        }],
-                };
+                return wrapResponse(switchedToClientTokenMode
+                    ? "Authentication mode was updated to client_provided_token and access token was set successfully."
+                    : "Access token updated successfully. You can now make Microsoft Graph requests on behalf of the authenticated user.");
             }
             catch (error) {
                 logger.error("Error setting access token:", error);
-                return {
-                    content: [{
-                            type: "text",
-                            text: `Error setting access token: ${error.message}`
-                        }],
-                    isError: true
-                };
+                return wrapResponse(`Error setting access token: ${error.message}`, true);
             }
         });
     });
@@ -537,32 +515,21 @@ async function main() {
                 const authMode = authManager?.getAuthMode() || "Not initialized";
                 const isReady = authManager !== null;
                 const tokenStatus = authManager ? await authManager.getTokenStatus() : { isExpired: false };
-                return {
-                    content: [{
-                            type: "text",
-                            text: JSON.stringify({
-                                tenant: {
-                                    name: tenantName || null,
-                                    tenantId: authConfig.tenantId || null,
-                                    display: tenantDisplay,
-                                },
-                                authMode,
-                                isReady,
-                                supportsTokenUpdates: authMode === AuthMode.ClientProvidedToken,
-                                tokenStatus,
-                                timestamp: new Date().toISOString()
-                            }, null, 2)
-                        }],
-                };
+                return wrapResponse(JSON.stringify({
+                    tenant: {
+                        name: tenantName || null,
+                        tenantId: authConfig.tenantId || null,
+                        display: tenantDisplay,
+                    },
+                    authMode,
+                    isReady,
+                    supportsTokenUpdates: authMode === AuthMode.ClientProvidedToken,
+                    tokenStatus,
+                    timestamp: new Date().toISOString()
+                }, null, 2));
             }
             catch (error) {
-                return {
-                    content: [{
-                            type: "text",
-                            text: `Error checking auth status: ${error.message}`
-                        }],
-                    isError: true
-                };
+                return wrapResponse(`Error checking auth status: ${error.message}`, true);
             }
         });
     });
@@ -600,26 +567,14 @@ async function main() {
                 else {
                     errorMessage += `To use interactive permission requests, set USE_INTERACTIVE=true in environment variables and restart the server.`;
                 }
-                return {
-                    content: [{ type: "text", text: errorMessage }],
-                    isError: true
-                };
+                return wrapResponse(errorMessage, true);
             }
             if (!scopes || scopes.length === 0) {
-                return {
-                    content: [{ type: "text", text: "Error: At least one permission scope must be specified." }],
-                    isError: true
-                };
+                return wrapResponse("Error: At least one permission scope must be specified.", true);
             }
             const invalidScopes = scopes.filter(scope => !scope.includes('.') || scope.trim() !== scope);
             if (invalidScopes.length > 0) {
-                return {
-                    content: [{
-                            type: "text",
-                            text: `Error: Invalid scope format detected: ${invalidScopes.join(', ')}. Scopes should be in format like 'User.Read' or 'Mail.ReadWrite'.`
-                        }],
-                    isError: true
-                };
+                return wrapResponse(`Error: Invalid scope format detected: ${invalidScopes.join(', ')}. Scopes should be in format like 'User.Read' or 'Mail.ReadWrite'.`, true);
             }
             logger.info(`Requesting additional Graph permissions: ${scopes.join(', ')}`);
             const currentTenantId = authConfig.tenantId || LokkaDefaultTenantId;
@@ -660,13 +615,7 @@ async function main() {
                 tokenResponse = await newCredential.getToken(scopeString);
             }
             if (!tokenResponse) {
-                return {
-                    content: [{
-                            type: "text",
-                            text: "Error: Failed to acquire access token with the requested scopes. Please check your permissions and try again."
-                        }],
-                    isError: true
-                };
+                return wrapResponse("Error: Failed to acquire access token with the requested scopes. Please check your permissions and try again.", true);
             }
             const newAuthConfig = {
                 mode: AuthMode.Interactive,
@@ -681,28 +630,17 @@ async function main() {
             graphClient = Client.initWithMiddleware({ authProvider: newAuthProvider });
             const tokenStatus = await authManager.getTokenStatus();
             logger.info(`Successfully acquired fresh token with additional scopes: ${scopes.join(', ')}`);
-            return {
-                content: [{
-                        type: "text",
-                        text: JSON.stringify({
-                            message: "Successfully acquired additional Microsoft Graph permissions with fresh authentication",
-                            requestedScopes: scopes,
-                            tokenStatus,
-                            note: "A fresh sign-in was performed to ensure the new permissions are properly granted",
-                            timestamp: new Date().toISOString()
-                        }, null, 2)
-                    }],
-            };
+            return wrapResponse(JSON.stringify({
+                message: "Successfully acquired additional Microsoft Graph permissions with fresh authentication",
+                requestedScopes: scopes,
+                tokenStatus,
+                note: "A fresh sign-in was performed to ensure the new permissions are properly granted",
+                timestamp: new Date().toISOString()
+            }, null, 2));
         }
         catch (error) {
             logger.error("Error requesting additional Graph permissions:", error);
-            return {
-                content: [{
-                        type: "text",
-                        text: `Error requesting additional permissions: ${error.message}`
-                    }],
-                isError: true
-            };
+            return wrapResponse(`Error requesting additional permissions: ${error.message}`, true);
         }
     });
     // -------------------------------------------------------------------------
@@ -714,22 +652,11 @@ async function main() {
         return withTenantStateLock(async () => {
             try {
                 if (!lokkaConfig) {
-                    return {
-                        content: [{
-                                type: "text",
-                                text: "Error: switch-tenant is only available when a multi-tenant config file is loaded. Set LOKKA_CONFIG to a JSON config file path and restart the server.",
-                            }],
-                        isError: true,
-                    };
+                    return wrapResponse("Error: switch-tenant is only available when a multi-tenant config file is loaded. Set LOKKA_CONFIG to a JSON config file path and restart the server.", true);
                 }
                 const selectedTenant = selectTenant(lokkaConfig, requestedTenant);
                 if (selectedTenant.name === tenantName) {
-                    return {
-                        content: [{
-                                type: "text",
-                                text: `Already connected to tenant '${tenantName}'. No switch needed.`,
-                            }],
-                    };
+                    return wrapResponse(`Already connected to tenant '${tenantName}'. No switch needed.`);
                 }
                 logger.info(`Switching tenant from '${tenantName}' to '${selectedTenant.name}'`);
                 const newAuthConfig = tenantConfigToAuthConfig(selectedTenant);
@@ -747,31 +674,20 @@ async function main() {
                     ? `${tenantName}${tenantId ? ` (${tenantId})` : ''}`
                     : tenantId || "unknown";
                 logger.info(`Successfully switched to tenant: ${tenantDisplay}`);
-                return {
-                    content: [{
-                            type: "text",
-                            text: JSON.stringify({
-                                message: `Successfully switched to tenant '${selectedTenant.name}'`,
-                                activeTenant: {
-                                    name: tenantName,
-                                    tenantId: tenantId || null,
-                                    display: tenantDisplay,
-                                    authMode: newAuthConfig.mode,
-                                },
-                                timestamp: new Date().toISOString(),
-                            }, null, 2),
-                        }],
-                };
+                return wrapResponse(JSON.stringify({
+                    message: `Successfully switched to tenant '${selectedTenant.name}'`,
+                    activeTenant: {
+                        name: tenantName,
+                        tenantId: tenantId || null,
+                        display: tenantDisplay,
+                        authMode: newAuthConfig.mode,
+                    },
+                    timestamp: new Date().toISOString(),
+                }, null, 2));
             }
             catch (error) {
                 logger.error("Error switching tenant:", error);
-                return {
-                    content: [{
-                            type: "text",
-                            text: `Error switching tenant: ${error.message}`,
-                        }],
-                    isError: true,
-                };
+                return wrapResponse(`Error switching tenant: ${error.message}`, true);
             }
         });
     });
@@ -788,17 +704,12 @@ async function main() {
                 const isActive = t.name === activeName || (!tenantName && !tenantId);
                 return `${isActive ? "\u25b6 " : "  "}${t.name}${isActive ? "  \u2190 ACTIVE" : ""}`;
             });
-            return {
-                content: [{
-                        type: "text",
-                        text: `Configured tenants:\n\n${lines.join("\n")}\n\n` +
-                            `Active tenant: ${tenantDisplay}\n\n` +
-                            `Use switch-tenant with the target name to change the active tenant for this running MCP session.\n` +
-                            (configPath
-                                ? `Config file: ${configPath}\nStartup default tenant is selected from LOKKA_TENANT when the server starts.`
-                                : "Using single-tenant environment variable configuration.\nTo use multiple tenants, create a JSON config file and set LOKKA_CONFIG=<path>."),
-                    }],
-            };
+            return wrapResponse(`Configured tenants:\n\n${lines.join("\n")}\n\n` +
+                `Active tenant: ${tenantDisplay}\n\n` +
+                `Use switch-tenant with the target name to change the active tenant for this running MCP session.\n` +
+                (configPath
+                    ? `Config file: ${configPath}\nStartup default tenant is selected from LOKKA_TENANT when the server starts.`
+                    : "Using single-tenant environment variable configuration.\nTo use multiple tenants, create a JSON config file and set LOKKA_CONFIG=<path>."));
         });
     });
     // -------------------------------------------------------------------------
@@ -808,12 +719,7 @@ async function main() {
         logger.info("Restart requested via restart tool. Exiting process for client-initiated relaunch.");
         // Send the response before exiting so the client receives the message
         setImmediate(() => process.exit(0));
-        return {
-            content: [{
-                    type: "text",
-                    text: "Lokka MCP server is restarting. The MCP client will relaunch the server automatically.",
-                }],
-        };
+        return wrapResponse("Lokka MCP server is restarting. The MCP client will relaunch the server automatically.");
     });
     // -------------------------------------------------------------------------
     // Step 5: Connect transport

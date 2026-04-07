@@ -546,7 +546,7 @@ async function main() {
                             }
                         }
                         catch (orgError) {
-                            logger.info("Could not fetch tenant name from Graph API", orgError);
+                            logger.info("Could not fetch tenant details from /organization endpoint", orgError);
                         }
                     }
                     // Rebuild tenantDisplay if we discovered new info

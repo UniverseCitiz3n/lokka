@@ -11,7 +11,8 @@ function parseJwtTenantId(token) {
         if (!decoded || typeof decoded !== 'object') {
             return null;
         }
-        return decoded.tid || null;
+        const tid = decoded.tid;
+        return typeof tid === 'string' ? tid : null;
     }
     catch (error) {
         logger.error("Error parsing JWT token for tenant ID", error);

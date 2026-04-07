@@ -10,11 +10,12 @@ const ONE_HOUR_IN_MS = 60 * 60 * 1000; // One hour in milliseconds
 // Helper function to parse JWT and extract tenant ID
 function parseJwtTenantId(token: string): string | null {
   try {
-    const decoded = jwt.decode(token) as any;
+    const decoded = jwt.decode(token) as Record<string, unknown> | null;
     if (!decoded || typeof decoded !== 'object') {
       return null;
     }
-    return decoded.tid || null;
+    const tid = decoded.tid;
+    return typeof tid === 'string' ? tid : null;
   } catch (error) {
     logger.error("Error parsing JWT token for tenant ID", error);
     return null;

@@ -515,6 +515,47 @@ async function main() {
                 const authMode = authManager?.getAuthMode() || "Not initialized";
                 const isReady = authManager !== null;
                 const tokenStatus = authManager ? await authManager.getTokenStatus() : { isExpired: false };
+                // When using token auth and tenant info is not yet known, try to discover it
+                if (authManager && authMode === AuthMode.ClientProvidedToken) {
+                    // Extract tenant ID from the JWT token if not already known
+                    if (!tenantId) {
+                        const tokenTenantId = authManager.getTenantIdFromToken();
+                        if (tokenTenantId) {
+                            tenantId = tokenTenantId;
+                            if (!authConfig.tenantId) {
+                                authConfig.tenantId = tokenTenantId;
+                            }
+                        }
+                    }
+                    // Fetch tenant display name from Graph API if not already known
+                    if (!tenantName && graphClient) {
+                        try {
+                            const orgResponse = await graphClient.api("/organization").version("v1.0").select("displayName,id").get();
+                            const org = orgResponse?.value?.[0];
+                            if (org) {
+                                if (!tenantId && org.id) {
+                                    tenantId = org.id;
+                                    if (!authConfig.tenantId) {
+                                        authConfig.tenantId = org.id;
+                                    }
+                                }
+                                if (org.displayName) {
+                                    tenantName = org.displayName;
+                                    authConfig.tenantName = org.displayName;
+                                }
+                            }
+                        }
+                        catch (orgError) {
+                            logger.info("Could not fetch tenant name from Graph API", orgError);
+                        }
+                    }
+                    // Rebuild tenantDisplay if we discovered new info
+                    if (tenantId || tenantName) {
+                        tenantDisplay = tenantName
+                            ? `${tenantName}${tenantId ? ` (${tenantId})` : ''}`
+                            : tenantId || "unknown";
+                    }
+                }
                 return wrapResponse(JSON.stringify({
                     tenant: {
                         name: tenantName || null,

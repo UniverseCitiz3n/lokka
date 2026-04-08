@@ -7,6 +7,21 @@ import { LokkaClientId, LokkaDefaultTenantId, LokkaDefaultRedirectUri } from "./
 // Constants
 const ONE_HOUR_IN_MS = 60 * 60 * 1000; // One hour in milliseconds
 
+// Helper function to parse JWT and extract tenant ID
+function parseJwtTenantId(token: string): string | null {
+  try {
+    const decoded = jwt.decode(token) as Record<string, unknown> | null;
+    if (!decoded || typeof decoded !== 'object') {
+      return null;
+    }
+    const tid = decoded.tid;
+    return typeof tid === 'string' ? tid : null;
+  } catch (error) {
+    logger.error("Error parsing JWT token for tenant ID", error);
+    return null;
+  }
+}
+
 // Helper function to parse JWT and extract scopes
 function parseJwtScopes(token: string): string[] {
   try {
@@ -248,6 +263,16 @@ export class AuthManager {
 
   getTenantName(): string | undefined {
     return this.config.tenantName;
+  }
+
+  getTenantIdFromToken(): string | null {
+    if (this.credential instanceof ClientProvidedTokenCredential) {
+      const accessToken = this.credential.getAccessToken();
+      if (accessToken) {
+        return parseJwtTenantId(accessToken);
+      }
+    }
+    return null;
   }
 
   isClientCredentials(): boolean {

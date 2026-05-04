@@ -4,6 +4,28 @@ import { logger } from "./logger.js";
 import { LokkaClientId, LokkaDefaultTenantId, LokkaDefaultRedirectUri } from "./constants.js";
 // Constants
 const ONE_HOUR_IN_MS = 60 * 60 * 1000; // One hour in milliseconds
+function normalizeClientProvidedToken(token) {
+    const trimmedToken = token.trim();
+    const tokenWithoutBearer = trimmedToken.replace(/^Bearer\s+/i, "");
+    if ((tokenWithoutBearer.startsWith('"') && tokenWithoutBearer.endsWith('"')) ||
+        (tokenWithoutBearer.startsWith("'") && tokenWithoutBearer.endsWith("'"))) {
+        return tokenWithoutBearer.slice(1, -1).trim();
+    }
+    return tokenWithoutBearer;
+}
+function parseJwtExpiry(token) {
+    try {
+        const decoded = jwt.decode(token);
+        if (!decoded || typeof decoded !== "object" || typeof decoded.exp !== "number") {
+            return undefined;
+        }
+        return new Date(decoded.exp * 1000);
+    }
+    catch (error) {
+        logger.error("Error parsing JWT token expiry", error);
+        return undefined;
+    }
+}
 // Helper function to parse JWT and extract scopes
 function parseJwtScopes(token) {
     try {
@@ -50,8 +72,8 @@ export class ClientProvidedTokenCredential {
     expiresOn;
     constructor(accessToken, expiresOn) {
         if (accessToken) {
-            this.accessToken = accessToken;
-            this.expiresOn = expiresOn || new Date(Date.now() + ONE_HOUR_IN_MS); // Default 1 hour
+            this.accessToken = normalizeClientProvidedToken(accessToken);
+            this.expiresOn = expiresOn || parseJwtExpiry(this.accessToken) || new Date(Date.now() + ONE_HOUR_IN_MS);
         }
         else {
             this.expiresOn = new Date(0); // Set to epoch to indicate no valid token
@@ -68,8 +90,8 @@ export class ClientProvidedTokenCredential {
         };
     }
     updateToken(accessToken, expiresOn) {
-        this.accessToken = accessToken;
-        this.expiresOn = expiresOn || new Date(Date.now() + ONE_HOUR_IN_MS);
+        this.accessToken = normalizeClientProvidedToken(accessToken);
+        this.expiresOn = expiresOn || parseJwtExpiry(this.accessToken) || new Date(Date.now() + ONE_HOUR_IN_MS);
         logger.info("Access token updated successfully");
     }
     isExpired() {

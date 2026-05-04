@@ -10,30 +10,51 @@ const ONE_HOUR_IN_MS = 60 * 60 * 1000; // One hour in milliseconds
 function normalizeClientProvidedToken(token: string): string {
   const trimmedToken = token.trim();
   const tokenWithoutBearer = trimmedToken.replace(/^Bearer\s+/i, "");
+  const compactToken = tokenWithoutBearer.replace(/\s+/g, "");
 
   if (
-    (tokenWithoutBearer.startsWith('"') && tokenWithoutBearer.endsWith('"')) ||
-    (tokenWithoutBearer.startsWith("'") && tokenWithoutBearer.endsWith("'"))
+    (compactToken.startsWith('"') && compactToken.endsWith('"')) ||
+    (compactToken.startsWith("'") && compactToken.endsWith("'"))
   ) {
-    return tokenWithoutBearer.slice(1, -1).trim();
+    return compactToken.slice(1, -1).trim();
   }
 
-  return tokenWithoutBearer;
+  return compactToken;
 }
 
 function parseJwtExpiry(token: string): Date | undefined {
   try {
     const decoded = jwt.decode(token) as any;
 
-    if (!decoded || typeof decoded !== "object" || typeof decoded.exp !== "number") {
+    if (!decoded || typeof decoded !== "object") {
       return undefined;
     }
 
-    return new Date(decoded.exp * 1000);
+    const expClaim = decoded.exp;
+    const exp = typeof expClaim === "number" ? expClaim : Number(expClaim);
+    if (!Number.isFinite(exp) || exp <= 0) {
+      return undefined;
+    }
+
+    return new Date(exp * 1000);
   } catch (error) {
     logger.error("Error parsing JWT token expiry", error);
     return undefined;
   }
+}
+
+function resolveTokenExpiry(accessToken: string, expiresOn?: Date): Date {
+  if (expiresOn && !isNaN(expiresOn.getTime())) {
+    return expiresOn;
+  }
+
+  const jwtExpiry = parseJwtExpiry(accessToken);
+  if (jwtExpiry) {
+    return jwtExpiry;
+  }
+
+  logger.info("JWT expiry was not found. Falling back to 1 hour from now.");
+  return new Date(Date.now() + ONE_HOUR_IN_MS);
 }
 
 // Helper function to parse JWT and extract scopes
@@ -91,15 +112,25 @@ export interface TokenBasedCredential extends TokenCredential {
 export class ClientProvidedTokenCredential implements TokenBasedCredential {
   private accessToken: string | undefined;
   private expiresOn: Date | undefined;
+
+  private syncExpiryFromToken(): void {
+    if (!this.expiresOn && this.accessToken) {
+      this.expiresOn = parseJwtExpiry(this.accessToken);
+    }
+  }
+
   constructor(accessToken?: string, expiresOn?: Date) {
     if (accessToken) {
       this.accessToken = normalizeClientProvidedToken(accessToken);
-      this.expiresOn = expiresOn || parseJwtExpiry(this.accessToken) || new Date(Date.now() + ONE_HOUR_IN_MS);
+      this.expiresOn = resolveTokenExpiry(this.accessToken, expiresOn);
     } else {
-      this.expiresOn = new Date(0); // Set to epoch to indicate no valid token
+      this.expiresOn = undefined;
     }
   }
+
   async getToken(scopes: string | string[]): Promise<AccessToken | null> {
+    this.syncExpiryFromToken();
+
     if (!this.accessToken || !this.expiresOn || this.expiresOn <= new Date()) {
       logger.error("Access token is not available or has expired");
       return null;
@@ -113,15 +144,18 @@ export class ClientProvidedTokenCredential implements TokenBasedCredential {
 
   updateToken(accessToken: string, expiresOn?: Date): void {
     this.accessToken = normalizeClientProvidedToken(accessToken);
-    this.expiresOn = expiresOn || parseJwtExpiry(this.accessToken) || new Date(Date.now() + ONE_HOUR_IN_MS);
+    this.expiresOn = resolveTokenExpiry(this.accessToken, expiresOn);
     logger.info("Access token updated successfully");
   }
+
   isExpired(): boolean {
+    this.syncExpiryFromToken();
     return !this.expiresOn || this.expiresOn <= new Date();
   }
 
-  getExpirationTime(): Date {
-    return this.expiresOn || new Date(0);
+  getExpirationTime(): Date | undefined {
+    this.syncExpiryFromToken();
+    return this.expiresOn;
   }
 
   // Getter for access token (for internal use by AuthManager)
